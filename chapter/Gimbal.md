@@ -140,9 +140,33 @@ raspSBGC_movingTowards(RTVector3_T<int> PositiveNegativeStill, float degreePerSe
 #### 4.1.simpleBGC API Specification ver2.4x 中的小错误
 在我们尝试读取板子的 real_time_data 时总是无法正确解析数据，通过对比返回的字节数与 API 说明中的字节数发现说明书中有三个字节的缺失，通过在 github 上找到的[另一位使用 C# 实现了 2.4x 版本的程序](https://github.com/park53kr/SimpleBGC_GUI/blob/master/MousePointTracker/MousePointTracker/gimbal.cs) 中的 RealtimeDataStructure 数据结构定义发现是缺失了表示电机 power 的三个字节字段。更新我们自己的程序后，正常解析读取到的 real_time_data 数据。
 #### 4.2.MPU6050 读取的 yaw 轴数据并不稳定
+注：下面提到的术语的定义与实际意义见附录
 yaw 轴数据在上电时重置为 0，之后变向一个方向一直漂移。如此一来，在使用 simpleBGC 自己的策略时会保证 yaw 轴数据为 "0"，也就是会随着 yaw 轴的数据漂移而漂移。而这是我们所不能接受的，所以，需要对 yaw 轴重新设计控制策略。
 
 备选方案：
-使用 MPU9250 替代目前的 MPU6050，MPU9250 多出了磁强计（magnetometer），将磁强计与 MPU6050 的加速度计以及重力计数据进行融合，可以得到较为精确的 yaw 轴数据。
+使用 MPU9250 替代目前的 MPU6050，MPU9250 多出了磁强计（magnetometer），将磁强计与 MPU6050 的加速度计（Accelerometers）以及重力计（Gyros）数据进行融合，可以得到较为精确的 yaw 轴数据；
 
-#### 4.3.API 接口中没有提供单独对某个轴
+使用两个 MPU6050 在平面的上下两面各贴一个，期待可以将两个读数处理后（比如取均值）得到较为“可靠的”数据；
+
+对 MPU6050 的读数直接进行处理，比如在移动 yaw 轴时考虑到移动特定时间的 yaw 漂移，将此漂移的角度增加或减少到移动的角度上。
+
+直观地看，第三种的误差是不可精确度量的；实验发现上电后 MPU6050 的 yaw 轴漂移是不定向的，即第二种也不具可操作性；所以，选择第一种解决方案。
+
+因为对硬件编程的接触有限，若是直接读取 MPU9250 的数据并且调用其内置 DMP 进行处理再同时单独读取磁强计，其过程中还涉及到多个滤波操作，最后得到的数据还需进行融合，这种工作量过大且容易出现一些细微难调的 BUG，所以借助于较为成熟的开源库进行 MPU9250 数据的读取。
+
+在 github 上找到了适用于我们的库 [RTIMULib2](https://github.com/richards-tech/RTIMULib2)，程序提供了在嵌入式 linux 系统上较为成熟且十分简单的方式来连接 9-dof，10-dof 或者是 11-dof 并获取 RTQF 或者 Kalman 滤波的四元组或者是 Euler 角的位姿数据。
+
+在获取了融合后的位姿后，我们需要对 yaw 轴的控制策略进行重新设计：不能再使用 simpleBGC 提供的角度模式（yaw 轴的角度是没有意义的）。不过可以使用速度模式，给定移动角度（值的正负表示方向）后向特定方向进行移动，同时轮询当前角度，当到达目标角度时给 simpleBGC 发送停止移动指令。
+
+即给 raspSBGC 添加 move_yaw(RTFLOAT targetAngleYAW) 的对外接口。
+
+可以看出，我们的策略只有一个需要特别注意的地方，即通过 RTIMULib 融合得到的 MPU9250 的位姿数据必须十分精确，而获取较为精确的 yaw 轴数据需要对板子进行校准，校准方法见附录。
+
+#### 4.3.API 接口中没有提供单独使某个轴对应的电机直接停止的指令
+在之前的设计中这是不必需的，而引入了对 yaw 轴的单独控制后，则需要做到单独使 yaw 轴对应电机停止运动。通过查看 simpleBGC 的 API 与相关文档，找到了替代方案：8bit simpleBGC 的固件最多可以存储三个 profile 文件，我们使用其中的两个，且两个只有一点差别：yaw 轴电机的 power 置为 0 和合理的值（能够带动 Gimbal 上的相机及镜头以及一些其他设备）。且保证在上电时选择的是 yaw 轴 power 置为 0 的 profile，在移动 yaw 轴时以及移动完成之后切换配置文件。
+
+### 5.测试
+我们的测试较为简单，对每个上述提到的方法进行单独测试，然后通过单独的 Socket 客户端与我们的程序进行 Socket 通信下的测试。在此赘述每次方法的测试有些过于浪费篇幅，详情可以参见 GimbalSBGC_Test.cpp 文件以及 C# 的 communicationTest 工程。
+
+值得指出的是，在试验板子的 API 时我们首先使用 USB 转串口（PL2303、CP2102等）线来连接控制板，使用串口助手软件（SerialAssistant 等）直接向板子发送自己根据 API 说明组合出的指令，通过观察返回信息，使得对 API 说明中提到的指令格式与返回数据格式有更加直观的认识，也是通过这个方法我们发现了上面提到的 ver 2.4x API 说明中的问题。建议在使用板子前通过这种方式进行测试，成本很低，也很有效。
+
