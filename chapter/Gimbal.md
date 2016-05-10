@@ -140,6 +140,9 @@ raspSBGC_movingTowards(RTVector3_T<int> PositiveNegativeStill, float degreePerSe
 #### 4.1.simpleBGC API Specification ver2.4x 中的小错误
 在我们尝试读取板子的 real_time_data 时总是无法正确解析数据，通过对比返回的字节数与 API 说明中的字节数发现说明书中有三个字节的缺失，通过在 github 上找到的[另一位使用 C# 实现了 2.4x 版本的程序](https://github.com/park53kr/SimpleBGC_GUI/blob/master/MousePointTracker/MousePointTracker/gimbal.cs) 中的 RealtimeDataStructure 数据结构定义发现是缺失了表示电机 power 的三个字节字段。更新我们自己的程序后，正常解析读取到的 real_time_data 数据。
 #### 4.2.MPU6050 读取的 yaw 轴数据并不稳定
-yaw 轴数据在上电时重置为 0，之后变向一个方向一直漂移。如此一来，在使用 simpleBGC 自己的策略时
+yaw 轴数据在上电时重置为 0，之后变向一个方向一直漂移。如此一来，在使用 simpleBGC 自己的策略时会保证 yaw 轴数据为 "0"，也就是会随着 yaw 轴的数据漂移而漂移。而这是我们所不能接受的，所以，需要对 yaw 轴重新设计控制策略。
+
+备选方案：
+使用 MPU9250 替代目前的 MPU6050，MPU9250 多出了磁强计（magnetometer），将磁强计与 MPU6050 的加速度计以及重力计数据进行融合，可以得到较为精确的 yaw 轴数据。
 
 #### 4.3.API 接口中没有提供单独对某个轴
