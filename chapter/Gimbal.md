@@ -26,7 +26,7 @@
 2.1.1.2.Gimbal 的整体控制方案有诸多开源与商业版本：
 在开源固件方面，有 [BruGi](https://sourceforge.net/projects/brushless-gimbal-brugi/),[EvvGC](https://github.com/EvvGC/Firmware),[storm32bgc](https://github.com/olliw42/storm32bgc)等（在 github 上搜索 "3 Axis Gimbal" 会有很多开源项目）。其中开源固件的同时，绝大多数也是开源硬件的，特别是 STORM32 的项目。
 在商业化固件方面，[BaseCam (AlexMos) SimpleBGC](http://www.basecamelectronics.com/simplebgc/) 的市场占有率很高。
-控制硬件方面，主要是 Ardunio 和 STROM32 的板子。
+控制硬件方面，主要是 Arduino 和 STROM32 的板子。
 市场占有率方面，AlexMos SimpleBGC 和 STROM32 的板子为主，前者更多些。
 
 考虑到诸多因素：对 STORM32 这种 ARM 板编程的了解有限，有较大的风险存在；在之前的项目中已经有了 simple BGC 板子的使用，当时是对 2 轴的 BruGi 程序进行裁剪实现；BruGi 只适用于 2 轴；AlexMos SimpleBGC 官方发布了详细的 API 接口，并且 [Serial Protocol Specification (ver. 2.4x) ](http://www.basecamelectronics.com/serialapi/) 适用于我们的 8bit 的板子，且在 github 上有 ver. 2.5x 的实现和使用例子。
@@ -45,7 +45,7 @@
 调用 simpleBGC API 实现 roll、pitch、yaw 的精确控制；
 向上层软件提供合适的调用接口。
 
-#### 2.3.关键技术难点
+#### 2.3.关键技术难点与可能存在风险
 实验室之前的项目已经有对两轴（roll、pitch）控制的实现，但没有尝试过对 yaw 的精确控制；
 操作板标配的 MPU6050 的 yaw 轴度数会有飘的问题（板子即使静止时度数也会一直减少或增加）；
 
@@ -66,15 +66,15 @@ PID 控制（proportional–integral–derivative control，比例-积分-微分
 4.GimbalCommand:定义 Gimbal 移动的命令格式；
 5.ServerController:解析/打包 Gimbal 数据，调用 raspSBGC 的方法；
 6.AuSocketServer:Socket 库；
-7.RaspberryServerMain:将程序部署到 raspberry 上，打开 Socket 通信与上层软件进行交互，接受到数据后，调用 SerialController 进行解析与运行，将返回值通过 Socket 返回到上层软件。
+7.RaspberryServerMain:将程序部署到 raspberry 上，打开 Socket 通信与上层软件进行交互，接受到数据后，调用 ServerController 进行解析与运行，将返回值通过 Socket 返回到上层软件。
 
 #### 2.7.测试计划
 raspSBGC 的所有方法，可以直接写 cpp 文件（GimbalSBGC_Test.cpp）进行测试；
-实现 communicateTest 工程（为简单且提供 GUI 使用 C# 开发）来进行经由 Socket 发送运动指令的测试；
+实现 communicateTest 工程（为简单且提供 GUI 使用 C# 开发）来进行经由 Socket 发送运动指令的测试。
 
 ### 3.详细设计
 #### 3.1.SBGC_lib 库
-使用：参考官方的 Ardunio 的程序与 lib 中的程序，要使用此库只需提供适用于自己平台的四个虚函数的具体实现即可([SBGC_parser.h](https://github.com/alexmos/sbgc-api-examples/blob/bb3fe16fea01fb68da6560240b160973b07879f4/libraries/SBGC_lib/include/SBGC_parser.h))：
+使用：参考官方的 Arduino 的程序与 lib 中的程序，要使用此库只需提供适用于自己平台的四个虚函数的具体实现即可([SBGC_parser.h](https://github.com/alexmos/sbgc-api-examples/blob/bb3fe16fea01fb68da6560240b160973b07879f4/libraries/SBGC_lib/include/SBGC_parser.h))：
 ``` C++
 /* Need to be implemented in the main code */
 class SBGC_ComObj {
@@ -168,5 +168,6 @@ yaw 轴数据在上电时重置为 0，之后变向一个方向一直漂移。�
 ### 5.测试
 我们的测试较为简单，对每个上述提到的方法进行单独测试，然后通过单独的 Socket 客户端与我们的程序进行 Socket 通信下的测试。在此赘述每次方法的测试有些过于浪费篇幅，详情可以参见 GimbalSBGC_Test.cpp 文件以及 C# 的 communicationTest 工程。
 
+### 6.一些建议
 值得指出的是，在试验板子的 API 时我们首先使用 USB 转串口（PL2303、CP2102等）线来连接控制板，使用串口助手软件（SerialAssistant 等）直接向板子发送自己根据 API 说明组合出的指令，通过观察返回信息，使得对 API 说明中提到的指令格式与返回数据格式有更加直观的认识，也是通过这个方法我们发现了上面提到的 ver 2.4x API 说明中的问题。建议在使用板子前通过这种方式进行测试，成本很低，也很有效。
 
